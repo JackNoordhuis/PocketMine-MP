@@ -196,11 +196,11 @@ class Level implements ChunkManager, Metadatable{
 	private $chunkSendTasks = [];
 
 	/** @var bool[] */
+	private $chunkPopulationTasks = [];
+	/** @var bool[] */
 	private $chunkPopulationQueue = [];
 	/** @var bool[] */
 	private $chunkPopulationLock = [];
-	/** @var int */
-	private $chunkPopulationQueueSize = 2;
 	/** @var bool[] */
 	private $generatorRegisteredWorkers = [];
 
@@ -351,7 +351,6 @@ class Level implements ChunkManager, Metadatable{
 
 		$this->chunkTickRadius = min($this->server->getViewDistance(), max(1, (int) $this->server->getProperty("chunk-ticking.tick-radius", 4)));
 		$this->chunksPerTick = (int) $this->server->getProperty("chunk-ticking.per-tick", 40);
-		$this->chunkPopulationQueueSize = (int) $this->server->getProperty("chunk-generation.population-queue-size", 2);
 		$this->clearChunksOnTick = (bool) $this->server->getProperty("chunk-ticking.clear-tick-list", true);
 
 		$dontTickBlocks = array_fill_keys($this->server->getProperty("chunk-ticking.disable-block-ticking", []), true);
@@ -2316,13 +2315,13 @@ class Level implements ChunkManager, Metadatable{
 
 	public function generateChunkCallback(int $x, int $z, ?Chunk $chunk){
 		Timings::$generationCallbackTimer->startTiming();
-		if(isset($this->chunkPopulationQueue[$index = Level::chunkHash($x, $z)])){
+		if(isset($this->chunkPopulationTasks[$index = Level::chunkHash($x, $z)])){
 			for($xx = -1; $xx <= 1; ++$xx){
 				for($zz = -1; $zz <= 1; ++$zz){
 					unset($this->chunkPopulationLock[Level::chunkHash($x + $xx, $z + $zz)]);
 				}
 			}
-			unset($this->chunkPopulationQueue[$index]);
+			unset($this->chunkPopulationTasks[$index]);
 
 			if($chunk !== null){
 				$oldChunk = $this->getChunk($x, $z, false);
@@ -2334,6 +2333,14 @@ class Level implements ChunkManager, Metadatable{
 						$loader->onChunkPopulated($chunk);
 					}
 				}
+			}
+
+			$queue = $this->chunkPopulationQueue;
+			$this->chunkPopulationQueue = [];
+			foreach($queue as $next => $_){
+				unset($this->chunkPopulationQueue[$next]);
+				Level::getXZ($next, $chunkX, $chunkZ);
+				$this->populateChunk($chunkX, $chunkZ);
 			}
 		}elseif(isset($this->chunkPopulationLock[$index])){
 			unset($this->chunkPopulationLock[$index]);
@@ -2953,12 +2960,18 @@ class Level implements ChunkManager, Metadatable{
 	}
 
 	public function populateChunk(int $x, int $z, bool $force = false) : bool{
-		if(isset($this->chunkPopulationQueue[$index = Level::chunkHash($x, $z)]) or (count($this->chunkPopulationQueue) >= $this->chunkPopulationQueueSize and !$force)){
+		$index = Level::chunkHash($x, $z);
+		if(
+			isset($this->chunkPopulationTasks[$index]) or
+			isset($this->chunkPopulationQueue[$index]) or
+			(!$force and count($this->chunkPopulationTasks) >= 2 * $this->server->getAsyncPool()->getSize())){
+			$this->chunkPopulationQueue[$index] = true;
 			return false;
 		}
 		for($xx = -1; $xx <= 1; ++$xx){
 			for($zz = -1; $zz <= 1; ++$zz){
 				if(isset($this->chunkPopulationLock[Level::chunkHash($x + $xx, $z + $zz)])){
+					$this->chunkPopulationQueue[$index] = true;
 					return false;
 				}
 			}
@@ -2968,7 +2981,7 @@ class Level implements ChunkManager, Metadatable{
 		if(!$chunk->isPopulated()){
 			Timings::$populationTimer->startTiming();
 
-			$this->chunkPopulationQueue[$index] = true;
+			$this->chunkPopulationTasks[$index] = true;
 			for($xx = -1; $xx <= 1; ++$xx){
 				for($zz = -1; $zz <= 1; ++$zz){
 					$this->chunkPopulationLock[Level::chunkHash($x + $xx, $z + $zz)] = true;

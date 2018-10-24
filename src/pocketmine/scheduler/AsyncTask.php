@@ -77,6 +77,11 @@ abstract class AsyncTask extends Collectable{
 		}
 
 		$this->setGarbage();
+
+		$notifier = $this->worker->notifier;
+		if($notifier !== null){
+			$notifier->wakeupSleeper();
+		}
 	}
 
 	public function isCrashed() : bool{

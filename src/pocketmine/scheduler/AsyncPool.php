@@ -23,6 +23,9 @@ declare(strict_types=1);
 
 namespace pocketmine\scheduler;
 
+use pocketmine\snooze\SleeperHandler;
+use pocketmine\snooze\SleeperNotifier;
+
 /**
  * Manages general-purpose worker threads used for processing asynchronous tasks, and the tasks submitted to those
  * workers.
@@ -48,11 +51,15 @@ class AsyncPool{
 	/** @var \Closure[] */
 	private $workerStartHooks = [];
 
-	public function __construct(int $size, int $workerMemoryLimit, \ClassLoader $classLoader, \ThreadedLogger $logger){
+	/** @var null|SleeperHandler */
+	private $sleeper;
+
+	public function __construct(int $size, int $workerMemoryLimit, \ClassLoader $classLoader, \ThreadedLogger $logger, ?SleeperHandler $sleeper = null){
 		$this->size = $size;
 		$this->workerMemoryLimit = $workerMemoryLimit;
 		$this->classLoader = $classLoader;
 		$this->logger = $logger;
+		$this->sleeper = $sleeper;
 	}
 
 	/**
@@ -118,8 +125,16 @@ class AsyncPool{
 	 */
 	private function getWorker(int $worker) : AsyncWorker{
 		if(!isset($this->workers[$worker])){
-
 			$this->workers[$worker] = new AsyncWorker($this->logger, $worker, $this->workerMemoryLimit);
+
+			if($this->sleeper !== null){
+				$notifier = new SleeperNotifier();
+				$this->sleeper->addNotifier($notifier, function() use ($worker){
+					$this->collectTasksFromWorker($worker);
+				});
+				$this->workers[$worker]->notifier = $notifier;
+			}
+
 			$this->workers[$worker]->setClassLoader($this->classLoader);
 			$this->workers[$worker]->start(self::WORKER_START_OPTIONS);
 
@@ -209,47 +224,50 @@ class AsyncPool{
 
 	/**
 	 * Collects finished and/or crashed tasks from the workers, firing their on-completion hooks where appropriate.
-	 *
-	 * @throws \ReflectionException
 	 */
 	public function collectTasks() : void{
-		foreach($this->taskQueues as $worker => $queue){
-			$doGC = false;
-			while(!$queue->isEmpty()){
-				/** @var AsyncTask $task */
-				$task = $queue->bottom();
-				$task->checkProgressUpdates();
-				if(!$task->isRunning() and $task->isGarbage()){ //make sure the task actually executed before trying to collect
-					$doGC = true;
-					$queue->dequeue();
+		foreach($this->workers as $worker => $_){
+			$this->collectTasksFromWorker($worker);
+		}
+	}
 
-					if($task->isCrashed()){
-						$this->logger->critical("Could not execute asynchronous task " . (new \ReflectionClass($task))->getShortName() . ": Task crashed");
-					}elseif(!$task->hasCancelledRun()){
-						try{
-							/*
-							 * It's possible for a task to submit a progress update and then finish before the progress
-							 * update is detected by the parent thread, so here we consume any missed updates.
-							 *
-							 * When this happens, it's possible for a progress update to arrive between the previous
-							 * checkProgressUpdates() call and the next isGarbage() call, causing progress updates to be
-							 * lost. Thus, it's necessary to do one last check here to make sure all progress updates have
-							 * been consumed before completing.
-							 */
-							$task->checkProgressUpdates();
-							$task->onCompletion();
-						}catch(\Throwable $e){
-							$this->logger->critical("Could not execute completion of asynchronous task " . (new \ReflectionClass($task))->getShortName() . ": " . $e->getMessage());
-							$this->logger->logException($e);
-						}
+	private function collectTasksFromWorker(int $worker) : void{
+		$queue = $this->taskQueues[$worker];
+		$doGC = false;
+		while(!$queue->isEmpty()){
+			/** @var AsyncTask $task */
+			$task = $queue->bottom();
+			$task->checkProgressUpdates();
+			if(!$task->isRunning() and $task->isGarbage()){ //make sure the task actually executed before trying to collect
+				$doGC = true;
+				$queue->dequeue();
+
+				if($task->isCrashed()){
+					$this->logger->critical("Could not execute asynchronous task " . (new \ReflectionClass($task))->getShortName() . ": Task crashed");
+				}elseif(!$task->hasCancelledRun()){
+					try{
+						/*
+						 * It's possible for a task to submit a progress update and then finish before the progress
+						 * update is detected by the parent thread, so here we consume any missed updates.
+						 *
+						 * When this happens, it's possible for a progress update to arrive between the previous
+						 * checkProgressUpdates() call and the next isGarbage() call, causing progress updates to be
+						 * lost. Thus, it's necessary to do one last check here to make sure all progress updates have
+						 * been consumed before completing.
+						 */
+						$task->checkProgressUpdates();
+						$task->onCompletion();
+					}catch(\Throwable $e){
+						$this->logger->critical("Could not execute completion of asynchronous task " . (new \ReflectionClass($task))->getShortName() . ": " . $e->getMessage());
+						$this->logger->logException($e);
 					}
-				}else{
-					break; //current task is still running, skip to next worker
 				}
+			}else{
+				break; //current task is still running, skip to next worker
 			}
-			if($doGC){
-				$this->workers[$worker]->collect();
-			}
+		}
+		if($doGC){
+			$this->workers[$worker]->collect();
 		}
 	}
 

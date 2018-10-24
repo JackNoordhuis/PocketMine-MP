@@ -23,6 +23,7 @@ declare(strict_types=1);
 
 namespace pocketmine\scheduler;
 
+use pocketmine\snooze\SleeperNotifier;
 use pocketmine\utils\MainLogger;
 use pocketmine\utils\Utils;
 use pocketmine\Worker;
@@ -37,10 +38,14 @@ class AsyncWorker extends Worker{
 	/** @var int */
 	private $memoryLimit;
 
-	public function __construct(\ThreadedLogger $logger, int $id, int $memoryLimit){
+	/** @var null|SleeperNotifier */
+	public $notifier;
+
+	public function __construct(\ThreadedLogger $logger, int $id, int $memoryLimit, ?SleeperNotifier $notifier = null){
 		$this->logger = $logger;
 		$this->id = $id;
 		$this->memoryLimit = $memoryLimit;
+		$this->notifier = $notifier;
 	}
 
 	public function run(){
