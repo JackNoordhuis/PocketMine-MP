@@ -2341,6 +2341,9 @@ class Level implements ChunkManager, Metadatable{
 				unset($this->chunkPopulationQueue[$next]);
 				Level::getXZ($next, $chunkX, $chunkZ);
 				$this->populateChunk($chunkX, $chunkZ);
+				if(isset($this->chunkPopulationTasks[$next])){ //successfully pushed for generation
+					break;
+				}
 			}
 		}elseif(isset($this->chunkPopulationLock[$index])){
 			unset($this->chunkPopulationLock[$index]);
