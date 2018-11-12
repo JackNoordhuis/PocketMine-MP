@@ -1415,7 +1415,6 @@ class Server{
 		$this->logger = $logger;
 
 		$this->embeddedComposerLoader = new EmbeddedClassLoader();
-		$this->embeddedComposerLoader->register(false);
 
 		try{
 			if(!file_exists($dataPath . "worlds/")){

@@ -29,9 +29,6 @@ class EmbeddedClassLoader extends \Threaded implements \ClassLoader {
 	/** @var string[] */
 	private $paths;
 
-	/** @var bool */
-	private static $registered = false;
-
 	public function __construct() {
 		$this->paths = new \Threaded;
 	}
@@ -51,25 +48,19 @@ class EmbeddedClassLoader extends \Threaded implements \ClassLoader {
 
 		$this->paths[] = $path;
 
-		//we need to automatically register the path to the runtime once the loader has been registered
-		if(static::$registered){
-			global $loader; //the require()d composer autoloader
-			$this->registerPath($loader, $path);
-		}
+		global $loader; //the require()d composer autoloader
+		$this->registerPath($loader, $path);
 	}
 
 	/**
 	 * Attaches the ClassLoader to the PHP runtime.
 	 *
+	 * Note: This should only be called on threads when they are first
+	 * started, registering all the paths again leads to undefined behaviour.
+	 *
 	 * @param bool $prepend
 	 */
 	public function register($prepend = false){
-		if(static::$registered){
-			return;
-		}
-
-		static::$registered = true;
-
 		global $loader; //the require()d composer autoloader
 		if($loader !== null){
 			foreach($this->paths as $path) {
