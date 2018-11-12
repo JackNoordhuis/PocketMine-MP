@@ -23,6 +23,8 @@ declare(strict_types=1);
 
 namespace pocketmine\plugin;
 
+use Dflydev\EmbeddedComposer\Core\EmbeddedComposerBuilder;
+
 /**
  * Handles different types of plugins
  */
@@ -46,7 +48,23 @@ class PharPluginLoader implements PluginLoader{
 	 * @param string $file
 	 */
 	public function loadPlugin(string $file) : void{
-		$this->loader->addPath("$file/src");
+		$phar = new \Phar($file);
+
+		//check if a composer.json file exists in the phar, if so treat it as a composer plugin
+		if(isset($phar["composer.json"]) and $phar["composer.json"] instanceof \PharFileInfo){
+			global $loader; //declared in PocketMine.php when the composer autoloader is required
+
+			$builder = new EmbeddedComposerBuilder($loader, $file);
+
+			$embedded = $builder
+				->setComposerFilename("composer.json")
+				->setVendorDirectory("vendor")
+				->build();
+
+			$embedded->processAdditionalAutoloads();
+		} else { //regular old phar plugin
+			$this->loader->addPath("$file/src");
+		}
 	}
 
 	/**
