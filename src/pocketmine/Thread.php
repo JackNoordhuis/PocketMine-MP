@@ -64,6 +64,8 @@ abstract class Thread extends \Thread{
 	 * (unless you are using a custom autoloader).
 	 */
 	public function registerClassLoader(){
+		global $loader;
+
 		if($this->composerAutoloaderPath !== null){
 			$loader = require $this->composerAutoloaderPath;
 
