@@ -107,6 +107,7 @@ use pocketmine\timings\TimingsHandler;
 use pocketmine\updater\AutoUpdater;
 use pocketmine\utils\Binary;
 use pocketmine\utils\Config;
+use pocketmine\utils\EmbeddedClassLoader;
 use pocketmine\utils\Internet;
 use pocketmine\utils\MainLogger;
 use pocketmine\utils\Terminal;
@@ -251,6 +252,8 @@ class Server{
 
 	/** @var \ClassLoader */
 	private $autoloader;
+	/** @var \ClassLoader */
+	private $embeddedComposerLoader;
 	/** @var string */
 	private $dataPath;
 	/** @var string */
@@ -621,6 +624,13 @@ class Server{
 	 */
 	public function getPluginManager(){
 		return $this->pluginManager;
+	}
+
+	/**
+	 * @return \ClassLoader|EmbeddedClassLoader
+	 */
+	public function getEmbeddedComposerLoader(){
+		return $this->embeddedComposerLoader;
 	}
 
 	/**
@@ -1404,6 +1414,9 @@ class Server{
 		$this->autoloader = $autoloader;
 		$this->logger = $logger;
 
+		$this->embeddedComposerLoader = new EmbeddedClassLoader();
+		$this->embeddedComposerLoader->register(false);
+
 		try{
 			if(!file_exists($dataPath . "worlds/")){
 				mkdir($dataPath . "worlds/", 0777);
@@ -1646,7 +1659,7 @@ class Server{
 
 			$this->pluginManager = new PluginManager($this, ((bool) $this->getProperty("plugins.legacy-data-dir", true)) ? null : $this->getDataPath() . "plugin_data" . DIRECTORY_SEPARATOR);
 			$this->profilingTickRate = (float) $this->getProperty("settings.profile-report-trigger", 20);
-			$this->pluginManager->registerInterface(new PharPluginLoader($this->autoloader));
+			$this->pluginManager->registerInterface(new PharPluginLoader($this->autoloader, $this->embeddedComposerLoader));
 			$this->pluginManager->registerInterface(new ScriptPluginLoader());
 
 			register_shutdown_function([$this, "crashDump"]);

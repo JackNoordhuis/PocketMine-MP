@@ -32,6 +32,8 @@ abstract class Thread extends \Thread{
 	protected $classLoader;
 	/** @var string|null */
 	protected $composerAutoloaderPath;
+	/** @var \ClassLoader|null */
+	protected $extraComposerPaths;
 
 	protected $isKilled = false;
 
@@ -39,13 +41,19 @@ abstract class Thread extends \Thread{
 		return $this->classLoader;
 	}
 
-	public function setClassLoader(\ClassLoader $loader = null){
+	public function setClassLoader(\ClassLoader $loader = null, \ClassLoader $extraComposerPaths = null){
 		$this->composerAutoloaderPath = \pocketmine\COMPOSER_AUTOLOADER_PATH;
 
 		if($loader === null){
 			$loader = Server::getInstance()->getLoader();
 		}
+
+		if($extraComposerPaths === null) {
+			$extraComposerPaths = Server::getInstance()->getEmbeddedComposerLoader();
+		}
+
 		$this->classLoader = $loader;
+		$this->extraComposerPaths = $extraComposerPaths;
 	}
 
 	/**
@@ -57,7 +65,11 @@ abstract class Thread extends \Thread{
 	 */
 	public function registerClassLoader(){
 		if($this->composerAutoloaderPath !== null){
-			require $this->composerAutoloaderPath;
+			$loader = require $this->composerAutoloaderPath;
+
+			if($this->extraComposerPaths !== null) {
+				$this->extraComposerPaths->register(false);
+			}
 		}
 		if($this->classLoader !== null){
 			$this->classLoader->register(false);

@@ -27,6 +27,8 @@ declare(strict_types=1);
 
 namespace pocketmine\utils;
 
+use Composer\Autoload\ClassLoader;
+use Dflydev\EmbeddedComposer\Core\EmbeddedComposerBuilder;
 use pocketmine\ThreadManager;
 
 /**
@@ -549,5 +551,24 @@ class Utils{
 		if(!$class->isInstantiable()){
 			throw new \InvalidArgumentException("Class $className cannot be constructed");
 		}
+	}
+
+	/**
+	 * Embeds an external composer autoloader into an existing composer class loader.
+	 *
+	 * @param \Composer\Autoload\ClassLoader $loader  The existing composer autoloader.
+	 * @param string $path          The path to the composer.json file
+	 * @param string $composerFile  The composer manifest (usually composer.json) filename.
+	 * @param string $vendorDir     The composer vendor directory filename.
+	 */
+	public static function embedComposerPath(ClassLoader $loader, string $path, string $composerFile = "composer.json", string $vendorDir = "vendor") : void{
+		$builder = new EmbeddedComposerBuilder($loader, $path);
+
+		$embedded = $builder
+			->setComposerFilename($composerFile)
+			->setVendorDirectory($vendorDir)
+			->build();
+
+		$embedded->processAdditionalAutoloads();
 	}
 }
